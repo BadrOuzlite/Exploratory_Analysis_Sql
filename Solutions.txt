@@ -1,0 +1,353 @@
+_________________________________________
+1-How many olympics games have been held?
+_________________________________________
+Solution : 
+select count(distinct Games) as Total_olympic_games
+from OLYMPICS_HISTORY
+
+
+_________________________________________
+2. List down all Olympics games held so far.
+_________________________________________
+Solution : 
+select distinct Year,Season,city
+from OLYMPICS_HISTORY
+order by Year
+
+
+_________________________________________
+3-Mention the total no of nations who participated in each olympics game?
+_________________________________________
+Solution : 
+with cte as
+			(select distinct t1.Games,t2.region
+			from OLYMPICS_HISTORY t1
+			join OLYMPICS_HISTORY_NOC_REGIONS t2
+			on t1.NOC = t2.NOC)
+select Games,count(region) AS total_countries
+from cte
+group by Games
+
+
+_________________________________________
+4-Which year saw the highest and lowest no of countries participating in olympics?
+_________________________________________
+solution :
+with cte as
+			(select distinct t1.Games,t2.region
+			from OLYMPICS_HISTORY t1
+			join OLYMPICS_HISTORY_NOC_REGIONS t2
+			on t1.NOC = t2.NOC),
+cte1 as 
+			(select Games,count(region) AS total_countries
+			from cte
+			group by Games)
+select distinct CONCAT(first_value(games)over(order by total_countries) ,'-',FIRST_VALUE(total_countries)over(order by total_countries)) as lowest_countries
+	,CONCAT(Last_value(games)over(order by total_countries range between unbounded preceding and unbounded following) ,'-',Last_VALUE(total_countries)
+over(order by total_countries range between unbounded preceding and unbounded following)) as Highest_countries
+from cte1
+
+_________________________________________
+5-Which nation has participated in all of the olympic games?
+_________________________________________
+solution :
+with cte as
+		(select distinct t2.region,t1.Games
+		from OLYMPICS_HISTORY t1
+		join OLYMPICS_HISTORY_NOC_REGIONS t2
+		on t1.NOC = t2.NOC),
+cte1 as
+		(select region,COUNT(games) as total_participation
+		from cte
+		group by region)
+select t1.region,t1.total_participation
+from cte1 t1
+join (select count(distinct Games) as total_games from OLYMPICS_HISTORY) t2
+on t1.total_participation = t2.total_games
+_________________________________________
+6-Identify the sport which was played in all summer olympics.
+_________________________________________
+solution :
+with cte as 
+			(select distinct Sport,Games
+			from OLYMPICS_HISTORY
+			where Season = 'summer'),
+cte1 as
+			(select distinct Sport,count(games)over(partition by sport order by sport) as NO_sport_played
+			from cte)
+select *
+from cte1 t1
+join (select count(distinct games) as total_played_sport from OLYMPICS_HISTORY where season = 'summer') t2
+on t1.NO_sport_played = t2.total_played_sport
+
+_________________________________________
+7-Which Sports were just played only once in the olympics?
+_________________________________________
+with cte as
+			(select distinct Games,Sport
+			from OLYMPICS_HISTORY),
+cte1 as
+			(select Sport,count(sport) as no
+			from cte
+			group by Sport)
+select t1.Sport,t1.no,t2.Games
+from cte1 t1
+join (select distinct Sport,games from OLYMPICS_HISTORY) t2
+on t1.Sport = t2.Sport
+where t1.no = 1
+_________________________________________
+8-Fetch the total no of sports played in each olympic games.
+_________________________________________
+solution: 
+with cte as 
+			(select distinct Games,Sport
+			from OLYMPICS_HISTORY),
+cte1 as
+			(select distinct Games,count(sport)over(partition by games order by games) as no_sport_played
+			from cte)
+select *
+from cte1
+order by no_sport_played desc
+
+_________________________________________
+9-Fetch details of the oldest athletes to win a gold medal.
+_________________________________________
+solution : 
+with cte as
+			(select *,DENSE_RANK()over(order by age desc) as rnk
+			from OLYMPICS_HISTORY
+			where Medal = 'gold')
+select *
+from cte 
+where rnk = 1
+_________________________________________
+10-Find the Ratio of male and female athletes participated in all olympic games.
+_________________________________________
+solution :
+with cte as
+		(select Sex,count(sex) as total
+		from OLYMPICS_HISTORY
+		group by sex),
+cte1 as
+		(select distinct lag(total,1,total)over(order by sex) as Total_F,lead(total,1,total)over(order by sex) total_M
+		from cte)
+select concat('1', ' : ' ,cast(cast(total_M as decimal)/cast(Total_F as decimal)as decimal(10,2))) as Ratio
+from cte1
+_________________________________________
+11-Fetch the top 5 athletes who have won the most gold medals.
+_________________________________________
+solution:
+with cte as 
+			(select Name,Team,Medal,count(medal)total_gold_medal
+			from OLYMPICS_HISTORY
+			where Medal = 'Gold'
+			group by Name,Team,Medal),
+cte1 as(
+			select *,DENSE_RANK()over(order by total_gold_medal desc) as rnk
+			from cte)
+select Name,Team,total_gold_medal
+from cte1
+where rnk <= 5
+_________________________________________
+12-Fetch the top 5 athletes who have won the most medals (gold/silver/bronze).
+_________________________________________
+with cte as
+			(select distinct name,Team,count(Medal)over(partition by name order by name) as Total_medals
+			from OLYMPICS_HISTORY
+			where Medal <> 'NA'),
+cte1 as 
+			(select *,DENSE_RANK()over(order by Total_medals desc) as rnk
+			from cte)
+select name,team,Total_medals
+from cte1
+where rnk <= 5
+_________________________________________
+13-Fetch the top 5 most successful countries in olympics. Success is defined by no of medals won.
+_________________________________________
+with cte as
+			(select t2.region,t1.Medal
+			from OLYMPICS_HISTORY t1
+			join OLYMPICS_HISTORY_NOC_REGIONS t2
+			on t1.NOC = t2.NOC
+			where Medal <> 'NA'),
+cte1 as
+			(select region,count(Medal)as Medal_Per_Country
+			from cte
+			group by region),
+cte2 as 
+			(select *,DENSE_RANK()over(order by Medal_Per_Country desc) as rnk
+			from cte1)
+select *
+from cte2
+where rnk <= 5
+
+_________________________________________
+15-List down total gold, silver and broze medals won by each country corresponding to each olympic games.
+_________________________________________
+solution:
+with cte as
+		(select t1.Games,t2.region,t1.Medal
+		from OLYMPICS_HISTORY t1
+		join OLYMPICS_HISTORY_NOC_REGIONS t2
+		on t1.NOC = t2.NOC
+		where t1.Medal <> 'NA')
+select *
+from cte 
+AS SourceTable
+PIVOT (
+    count(Medal)
+    FOR Medal IN (gold, silver,bronze)) AS PivotTable
+order by games
+
+_________________________________________
+16. Identify which country won the most gold, most silver and most bronze medals in each olympic games.
+_________________________________________
+solution:
+with cte as
+		(select t1.Games,t2.region,t1.Medal
+		from OLYMPICS_HISTORY t1
+		join OLYMPICS_HISTORY_NOC_REGIONS t2
+		on t1.NOC = t2.NOC
+		where t1.Medal <> 'NA'),
+cte1 as 
+		(select *
+		from cte 
+		AS SourceTable
+		PIVOT (
+			count(Medal)
+			FOR Medal IN (gold, silver,bronze)) AS PivotTable
+		)
+select distinct Games,case when gold = LAST_VALUE(gold)over(partition by Games order by Games)  
+		then concat(LAST_VALUE(region)over(partition by Games order by gold),' - ',LAST_VALUE(gold)over(partition by Games order by gold))
+		else concat(LAST_VALUE(region)over(partition by Games order by gold range between unbounded preceding and unbounded following),' - ',LAST_VALUE(gold)over(partition by Games order by gold
+		range between unbounded preceding and unbounded following))
+		end as Max_gold
+		,case when silver = LAST_VALUE(silver)over(partition by Games order by Games)  
+		then concat(LAST_VALUE(region)over(partition by Games order by silver range between unbounded preceding and unbounded following),' - ',LAST_VALUE(silver)over(partition by Games order by silver range between unbounded preceding and unbounded following))
+		else concat(LAST_VALUE(region)over(partition by Games order by silver range between unbounded preceding and unbounded following),' - ',LAST_VALUE(silver)over(partition by Games order by silver range between unbounded preceding and unbounded following))
+		end as Max_silver
+		,case when bronze = LAST_VALUE(bronze)over(partition by Games order by Games)  
+		then concat(LAST_VALUE(region)over(partition by Games order by bronze range between unbounded preceding and unbounded following),' - ',LAST_VALUE(bronze)over(partition by Games order by bronze range between unbounded preceding and unbounded following))
+		else concat(LAST_VALUE(region)over(partition by Games order by bronze range between unbounded preceding and unbounded following),' - ',LAST_VALUE(bronze)over(partition by Games order by bronze range between unbounded preceding and unbounded following))
+		end as Max_bronze
+from cte1
+_________________________________________
+17-Identify which country won the most gold, most silver, most bronze medals and the most medals in each olympic games.
+_________________________________________
+with cte as
+		(select t1.Games,t2.region,t1.Medal
+		from OLYMPICS_HISTORY t1
+		join OLYMPICS_HISTORY_NOC_REGIONS t2
+		on t1.NOC = t2.NOC
+		where t1.Medal <> 'NA'),
+cte1 as 
+		(select *
+		from cte 
+		AS SourceTable
+		PIVOT (
+			count(Medal)
+			FOR Medal IN (gold, silver,bronze)) AS PivotTable
+		),
+cte2 as
+			(select distinct Games,region,case when gold = LAST_VALUE(gold)over(partition by Games order by Games)  
+					then concat(LAST_VALUE(region)over(partition by Games order by gold),' - ',LAST_VALUE(gold)over(partition by Games order by gold))
+					else concat(LAST_VALUE(region)over(partition by Games order by gold range between unbounded preceding and unbounded following),' - ',LAST_VALUE(gold)over(partition by Games order by gold
+					range between unbounded preceding and unbounded following))
+					end as Max_gold
+					,case when silver = LAST_VALUE(silver)over(partition by Games order by Games)  
+					then concat(LAST_VALUE(region)over(partition by Games order by silver range between unbounded preceding and unbounded following),' - ',LAST_VALUE(silver)over(partition by Games order by silver range between unbounded preceding and unbounded following))
+					else concat(LAST_VALUE(region)over(partition by Games order by silver range between unbounded preceding and unbounded following),' - ',LAST_VALUE(silver)over(partition by Games order by silver range between unbounded preceding and unbounded following))
+					end as Max_silver
+					,case when bronze = LAST_VALUE(bronze)over(partition by Games order by Games)  
+					then concat(LAST_VALUE(region)over(partition by Games order by bronze range between unbounded preceding and unbounded following),' - ',LAST_VALUE(bronze)over(partition by Games order by bronze range between unbounded preceding and unbounded following))
+					else concat(LAST_VALUE(region)over(partition by Games order by bronze range between unbounded preceding and unbounded following),' - ',LAST_VALUE(bronze)over(partition by Games order by bronze range between unbounded preceding and unbounded following))
+					end as Max_bronze
+					,gold+silver+bronze as total
+			from cte1)
+select distinct Games,max_gold,Max_silver,Max_silver,Max_bronze,case when total = LAST_VALUE(total)over(partition by games order by total range between unbounded preceding and unbounded following) 
+		then concat(last_value(region)over(partition by games order by total),' - ',last_value(total)over(partition by games order by total))
+		else concat(last_value(region)over(partition by games order by total range between unbounded preceding and unbounded following),' - ',last_value(total)over(partition by games order by total range between unbounded preceding and unbounded following))
+		end as max_medals
+from cte2
+
+_________________________________________
+14. List down total gold, silver and bronze medals won by each country.
+_________________________________________
+solution:
+with cte as 
+			(select t2.region,t1.Medal
+			from OLYMPICS_HISTORY t1
+			join OLYMPICS_HISTORY_NOC_REGIONS t2
+			on t1.NOC = t2.NOC
+			where t1.Medal <> 'NA'),
+cte1 as
+			(select *
+			from cte
+			as sourcetable
+						pivot(count(medal) for Medal in (gold,silver,bronze)) as PivotTable)
+select *
+from cte1
+order by gold desc
+_________________________________________
+19-In which Sport/event, India has won highest medals.
+_________________________________________
+solution:
+with cte as
+		(select t2.region,t1.Sport,t1.Medal
+		from OLYMPICS_HISTORY t1
+		join OLYMPICS_HISTORY_NOC_REGIONS t2
+		on t1.NOC = t2.NOC
+		where t1.Medal <> 'NA'),
+cte1 as 
+		(select distinct region,Sport,count(medal)over(partition by sport order by sport) as Total_medals
+		from cte
+		where region = 'india')
+select distinct LAST_VALUE(Sport)over(partition by region order by Total_medals
+			range between unbounded preceding and unbounded following) as sport
+		,LAST_VALUE(Total_medals)over(partition by region order by Total_medals
+			range between unbounded preceding and unbounded following) as Total_medals
+from cte1
+_________________________________________
+20-Break down all olympic games where india won medal for Hockey and how many medals in each olympic games.
+_________________________________________
+solution:
+
+
+with cte as
+		(select t2.region,t1.Games,t1.Sport,t1.Medal
+		from OLYMPICS_HISTORY t1
+		join OLYMPICS_HISTORY_NOC_REGIONS t2
+		on t1.NOC = t2.NOC
+		where t1.Medal <> 'NA' ),
+cte1 as 
+		(select distinct Games,Sport,Medal,count(Medal)over(partition by games order by Games) as Total_medals
+		from cte
+		where region = 'india' and Sport = 'Hockey')
+select *
+from cte1
+order by Total_medals desc
+_________________________________________
+18-Which countries have never won gold medal but have won silver/bronze medals?
+_________________________________________
+solution : 
+with cte as
+		(select t2.region,t1.Medal
+		from OLYMPICS_HISTORY t1
+		join OLYMPICS_HISTORY_NOC_REGIONS t2
+		on t1.NOC = t2.NOC
+		where t1.Medal <> 'NA' ),
+cte1 as
+		(select *
+		from cte
+		as sourcetable
+								pivot(count(medal) for Medal in (gold,silver,bronze)) as PivotTable)
+select *
+from cte1
+where gold = 0
+order by silver desc
+
+
+
+
+
+
